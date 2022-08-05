@@ -37,14 +37,53 @@ class MyPromise {
 
   // then方法,接收一个成功的回调和一个失败的回调
   then(resolveFn, rejectFn) {
-    this._resolveQueue.push(resolveFn)
-    this._rejectQueue.push(rejectFn)
+    //return一个新的promise
+    return new MyPromise((resolve, reject) => {
+      //把resolveFn重新包装一下,再push进resolve执行队列,这是为了能够获取回调的返回值进行分类讨论
+      const fulfilledFn = value => {
+        try {
+          //执行第一个(当前的)Promise的成功回调,并获取返回值
+          let x = resolveFn(value)
+          //如果传进来的本来就是个promise，则需要调用传进来的promise的then，让数据能给当前promise resolve
+          //这里resolve之后，就能被下一个.then()的回调获取到返回值，从而实现链式调用
+          x instanceof MyPromise ? x.then(resolve, reject) : resolve(x)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      //把后续then收集的依赖都push进当前Promise的成功回调队列中(_rejectQueue), 这是为了保证顺序调用
+      this._resolveQueue.push(fulfilledFn)
+
+      //reject同理
+      const rejectedFn = error => {
+        try {
+          let x = rejectFn(error)
+          x instanceof MyPromise ? x.then(resolve, reject) : resolve(x)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      this._rejectQueue.push(rejectedFn)
+    })
   }
 }
 
 const p1 = new MyPromise((resolve, reject) => {
   setTimeout(() => {
-    resolve('result')
-  }, 1000);
+    resolve(1)
+  }, 500);
 })
-p1.then(res => console.log(res))
+
+p1.then(res => {
+  console.log(res)
+  return 2
+}).then(res => {
+  return new MyPromise((resolve, reject) => {
+    console.log(res)
+    resolve(res)
+  })
+}).then(res => {
+  console.log(res)
+})
+
+//输出 1 2 3
